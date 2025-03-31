@@ -1,0 +1,6 @@
+discord.py
+watchdog
+python-dotenv
+aiosqlite
+aiohttp
+psutil
