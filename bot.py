@@ -103,7 +103,7 @@ async def on_ready():
         while True:
             await bot.change_presence(
                 activity=discord.Game(
-                    name=f"{len(bot.guilds)}Server || {round(bot.latency * 1000)}ms"
+                    name=f"{len(bot.guilds)}Server || {round(bot.latency * 1000)}ms || {bot.shard_count}shards"
                 )
             )
             await asyncio.sleep(30)
