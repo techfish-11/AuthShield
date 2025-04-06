@@ -1,10 +1,11 @@
 import logging
 from typing import Optional
 
+import asyncpg
 import discord
 from discord.ext import commands
 
-from src.panel.authpanel import DB_PATH
+from src.panel.authpanel import DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,10 @@ SUCCESS_MESSAGES = {
 class AuthRemove(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.conn = None
+        self.conn: Optional[asyncpg.Connection] = None
 
     async def cog_load(self) -> None:
-        import aiosqlite
-        self.conn = await aiosqlite.connect(DB_PATH)
+        self.conn = await asyncpg.connect(**DB_CONFIG)
     
     async def cog_unload(self) -> None:
         if self.conn:
@@ -45,17 +45,16 @@ class AuthRemove(commands.Cog):
             message_id_int = int(message_id)
             
             # Retrieve the panel information from the database
-            async with self.conn.execute(
-                "SELECT channel_id FROM panels WHERE message_id = ?", 
-                (message_id_int,)
-            ) as cursor:
-                result = await cursor.fetchone()
+            row = await self.conn.fetchrow(
+                "SELECT channel_id FROM panels WHERE message_id = $1", 
+                message_id_int
+            )
                 
-                if not result:
-                    await interaction.response.send_message(ERROR_MESSAGES["not_found"], ephemeral=True)
-                    return
+            if not row:
+                await interaction.response.send_message(ERROR_MESSAGES["not_found"], ephemeral=True)
+                return
                 
-                channel_id = result[0]
+            channel_id = row["channel_id"]
             
             # Search for and delete the message
             try:
@@ -74,8 +73,7 @@ class AuthRemove(commands.Cog):
                 return
             
             # Delete from the database
-            await self.conn.execute("DELETE FROM panels WHERE message_id = ?", (message_id_int,))
-            await self.conn.commit()
+            await self.conn.execute("DELETE FROM panels WHERE message_id = $1", message_id_int)
             
             await interaction.response.send_message(SUCCESS_MESSAGES["panel_removed"], ephemeral=True)
             

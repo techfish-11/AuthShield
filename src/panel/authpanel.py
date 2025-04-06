@@ -1,6 +1,7 @@
-import aiosqlite
+import asyncpg
 import base64
 import logging
+import os
 from io import BytesIO
 from typing import Final, Optional
 
@@ -12,7 +13,14 @@ API_BASE_URL: Final[str] = "https://captcha.evex.land/api/captcha"
 TIMEOUT_SECONDS: Final[int] = 30
 MIN_DIFFICULTY: Final[int] = 1
 MAX_DIFFICULTY: Final[int] = 10
-DB_PATH: Final[str] = "data/authpanel.db"
+# PostgreSQL接続設定
+DB_CONFIG: Final[dict] = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": os.getenv("POSTGRES_PORT", 5432),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
+    "database": os.getenv("POSTGRES_DB", "authshield")
+}
 
 ERROR_MESSAGES: Final[dict] = {
     "invalid_difficulty": "Difficulty must be specified between 1 and 10.",
@@ -124,28 +132,28 @@ class Auth(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._session: Optional[aiohttp.ClientSession] = None
-        self.conn: Optional[aiosqlite.Connection] = None
+        self.conn: Optional[asyncpg.Connection] = None
 
     async def _initialize_db(self) -> None:
-        async with self.conn.execute(
+        await self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS panels (
-                message_id INTEGER PRIMARY KEY,
-                channel_id INTEGER NOT NULL,
-                role_id INTEGER NOT NULL,
+                message_id BIGINT PRIMARY KEY,
+                channel_id BIGINT NOT NULL,
+                role_id BIGINT NOT NULL,
                 difficulty INTEGER NOT NULL
             )
             """
-        ):
-            pass
+        )
 
     async def cog_load(self) -> None:
         self._session = aiohttp.ClientSession()
-        self.conn = await aiosqlite.connect(DB_PATH)
+        self.conn = await asyncpg.connect(**DB_CONFIG)
         await self._initialize_db()
-        async with self.conn.execute("SELECT message_id, channel_id, role_id, difficulty FROM panels") as cursor:
-            async for message_id, channel_id, role_id, difficulty in cursor:
-                view = PersistentAuthView(message_id, role_id, difficulty, self._session)
+        async with self.conn.transaction():
+            rows = await self.conn.fetch("SELECT message_id, channel_id, role_id, difficulty FROM panels")
+            for row in rows:
+                view = PersistentAuthView(row["message_id"], row["role_id"], row["difficulty"], self._session)
                 self.bot.add_view(view)
 
     async def cog_unload(self) -> None:
@@ -180,10 +188,9 @@ class Auth(commands.Cog):
         self.bot.add_view(view)
         await message.edit(view=view)
         await self.conn.execute(
-            "INSERT INTO panels (message_id, channel_id, role_id, difficulty) VALUES (?, ?, ?, ?)",
-            (message.id, interaction.channel.id, role.id, difficulty)
+            "INSERT INTO panels (message_id, channel_id, role_id, difficulty) VALUES ($1, $2, $3, $4)",
+            message.id, interaction.channel.id, role.id, difficulty
         )
-        await self.conn.commit()
         await interaction.response.send_message(SUCCESS_MESSAGES["panel_created"], ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:

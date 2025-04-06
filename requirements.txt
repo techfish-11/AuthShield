@@ -1,6 +1,7 @@
 discord.py
 watchdog
 python-dotenv
-aiosqlite
+asyncpg
 aiohttp
 psutil
+sentry_sdk
