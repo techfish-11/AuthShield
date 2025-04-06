@@ -15,11 +15,32 @@ load_dotenv()
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 
+# シャーディング設定（.envファイルから読み込み）
+SHARD_ID = os.getenv('SHARD_ID')
+SHARD_COUNT = os.getenv('SHARD_COUNT')
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="as!", intents=intents)
+# シャーディングの設定
+if SHARD_ID is not None and SHARD_COUNT is not None:
+    try:
+        shard_id = int(SHARD_ID)
+        shard_count = int(SHARD_COUNT)
+        bot = commands.Bot(
+            command_prefix="as!", 
+            intents=intents,
+            shard_id=shard_id,
+            shard_count=shard_count
+        )
+        print(f"シャーディングモードで実行: シャードID {shard_id}/{shard_count}")
+    except ValueError:
+        print("警告: SHARD_IDまたはSHARD_COUNTの値が不正です。通常モードで実行します。")
+        bot = commands.Bot(command_prefix="as!", intents=intents)
+else:
+    # シャーディング設定がない場合は通常のBotインスタンスを作成
+    bot = commands.Bot(command_prefix="as!", intents=intents)
 
 class CogReloader(FileSystemEventHandler):
     def __init__(self, bot):
